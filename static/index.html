@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Love Letter</title>
+<style>
+:root {
+  --bg: #0d1b2a;
+  --surface: #1b2d45;
+  --surface2: #243b55;
+  --gold: #d4af37;
+  --gold-light: #f0d060;
+  --text: #e8dcc8;
+  --text-dim: #8a9ab5;
+  --red: #c0392b;
+  --green: #27ae60;
+  --blue: #2980b9;
+  --card-0: #2c3e50;   /* Spy */
+  --card-1: #6d4c41;   /* Guard */
+  --card-2: #4a235a;   /* Priest */
+  --card-3: #7b2c2c;   /* Baron */
+  --card-4: #1a5276;   /* Handmaid */
+  --card-5: #1a3a2c;   /* Prince */
+  --card-6: #4a3728;   /* Chancellor */
+  --card-7: #5b2c6f;   /* King */
+  --card-8: #4a4a00;   /* Countess */
+  --card-9: #6b0f2a;   /* Princess */
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+.screen { display: none; height: 100vh; }
+.screen.active { display: flex; flex-direction: column; }
+
+/* ===== ENTRY ===== */
+#screen-entry {
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: radial-gradient(ellipse at center, #1b2d45 0%, #0d1b2a 100%);
+}
+#screen-entry h1 {
+  font-size: 3rem;
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(212,175,55,0.4);
+  letter-spacing: 4px;
+}
+#screen-entry .subtitle {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+.entry-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+}
+.entry-form input {
+  background: var(--surface);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 1rem;
+  padding: 10px 14px;
+  outline: none;
+}
+.entry-form input:focus { border-color: var(--gold-light); box-shadow: 0 0 8px rgba(212,175,55,0.3); }
+.btn {
+  background: var(--gold);
+  border: none;
+  border-radius: 6px;
+  color: #0d1b2a;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 10px 20px;
+  transition: background 0.15s;
+}
+.btn:hover { background: var(--gold-light); }
+.btn:disabled { background: #555; color: #888; cursor: not-allowed; }
+.btn-outline {
+  background: transparent;
+  border: 2px solid var(--gold);
+  border-radius: 6px;
+  color: var(--gold);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 10px 20px;
+  transition: all 0.15s;
+}
+.btn-outline:hover { background: var(--gold); color: #0d1b2a; }
+.join-row { display: flex; gap: 8px; }
+.join-row input { flex: 1; }
+.error-msg { color: var(--red); font-size: 0.85rem; text-align: center; min-height: 18px; }
+
+/* ===== LOBBY ===== */
+#screen-lobby {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+#screen-lobby h2 { color: var(--gold); font-size: 1.8rem; }
+.room-code {
+  font-size: 3rem;
+  font-weight: 900;
+  color: var(--gold-light);
+  letter-spacing: 8px;
+  background: var(--surface);
+  padding: 16px 32px;
+  border-radius: 12px;
+  border: 2px solid var(--gold);
+}
+.player-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+.player-list li {
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.player-list li .crown { color: var(--gold); }
+.lobby-hint { color: var(--text-dim); font-size: 0.85rem; }
+
+/* ===== GAME ===== */
+#screen-game {
+  display: none;
+  grid-template-rows: auto 1fr auto auto;
+  overflow: hidden;
+}
+#screen-game.active { display: grid; }
+
+.game-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface2);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+.game-header .deck-info { font-size: 0.85rem; }
+.game-header .deck-info span { color: var(--gold); font-weight: 700; }
+.face-up-cards { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.opponents-area {
+  background: var(--bg);
+  border-bottom: 1px solid var(--surface2);
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 12px 16px;
+  align-items: flex-start;
+}
+.opponent-card {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 10px;
+  min-width: 130px;
+  padding: 10px 12px;
+  flex-shrink: 0;
+  transition: border-color 0.2s;
+}
+.opponent-card.current-turn { border-color: var(--gold); box-shadow: 0 0 10px rgba(212,175,55,0.3); }
+.opponent-card.eliminated { opacity: 0.4; }
+.opponent-card.protected { border-color: var(--blue); }
+.opponent-card.target-candidate { border-color: #e74c3c; cursor: pointer; }
+.opponent-card.target-candidate:hover { background: #2a1a1a; }
+.opp-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+.opp-tokens { color: var(--gold); font-size: 0.8rem; margin-bottom: 6px; }
+.opp-status { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 6px; }
+.opp-discard { display: flex; gap: 4px; flex-wrap: wrap; }
+.mini-card {
+  width: 28px;
+  height: 38px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.game-log-area {
+  background: var(--surface);
+  border-bottom: 1px solid var(--surface2);
+  overflow-y: auto;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.log-entry:last-child { border-bottom: none; }
+
+.my-area {
+  background: var(--surface2);
+  padding: 12px 16px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.my-info { min-width: 100px; }
+.my-name { font-weight: 700; margin-bottom: 4px; }
+.my-tokens { color: var(--gold); font-size: 0.85rem; margin-bottom: 6px; }
+.my-discard { display: flex; gap: 4px; flex-wrap: wrap; }
+.hand-area { display: flex; gap: 10px; align-items: flex-end; flex: 1; flex-wrap: wrap; }
+.card {
+  width: 72px;
+  height: 100px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid transparent;
+  transition: transform 0.15s, border-color 0.15s;
+  position: relative;
+  user-select: none;
+}
+.card:hover:not(.disabled) { transform: translateY(-6px); }
+.card.selected { border-color: var(--gold-light); transform: translateY(-10px); }
+.card.disabled { opacity: 0.4; cursor: not-allowed; }
+.card .card-value { font-size: 1.4rem; font-weight: 900; }
+.card .card-name { font-size: 0.55rem; text-align: center; margin-top: 2px; color: rgba(255,255,255,0.8); }
+.card .card-desc { font-size: 0.45rem; text-align: center; margin-top: 2px; color: rgba(255,255,255,0.5); position: absolute; bottom: 4px; left: 2px; right: 2px; }
+
+/* Action overlay */
+.action-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.action-overlay.active { display: flex; }
+.action-box {
+  background: var(--surface);
+  border: 2px solid var(--gold);
+  border-radius: 12px;
+  padding: 24px 28px;
+  max-width: 480px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.action-box h3 { color: var(--gold); font-size: 1.1rem; }
+.action-box p { color: var(--text-dim); font-size: 0.85rem; }
+.action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.action-buttons .btn { font-size: 0.85rem; padding: 8px 14px; }
+.action-buttons .btn-outline { font-size: 0.85rem; padding: 8px 14px; }
+.chancellor-cards { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.chancellor-order { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chancellor-order .slot {
+  background: var(--surface2);
+  border: 2px dashed var(--gold);
+  border-radius: 6px;
+  width: 60px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Play button */
+.play-btn-area { display: flex; align-items: flex-end; padding-bottom: 4px; }
+
+/* ===== ROUND END ===== */
+#screen-round-end {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+#screen-round-end h2 { color: var(--gold); font-size: 1.8rem; }
+.revealed-hands {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.revealed-hand {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 12px 16px;
+  text-align: center;
+  min-width: 100px;
+}
+.revealed-hand .r-name { font-weight: 700; margin-bottom: 8px; }
+.revealed-hand.winner { border: 2px solid var(--gold); }
+.token-board {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.token-entry {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}
+.token-entry span { color: var(--gold); font-weight: 700; }
+
+/* ===== GAME OVER ===== */
+#screen-game-over {
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+#screen-game-over h2 { color: var(--gold); font-size: 2rem; }
+.winner-display { font-size: 1.2rem; text-align: center; }
+
+/* Notification toast */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  z-index: 200;
+  transition: opacity 0.3s;
+}
+.toast.hidden { opacity: 0; pointer-events: none; }
+
+/* Token dots */
+.token-dots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.token-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+.token-dot.empty { background: var(--surface2); border: 1px solid var(--gold); }
+
+/* Status indicator */
+.status-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--surface2);
+  padding: 4px 16px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+}
+.status-bar .connected { color: var(--green); }
+.status-bar .disconnected { color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- Entry Screen -->
+<div id="screen-entry" class="screen active">
+  <h1>♥ Love Letter</h1>
+  <p class="subtitle">2〜6人用カードゲーム</p>
+  <div class="entry-form">
+    <input id="name-input" type="text" placeholder="あなたの名前" maxlength="20" autocomplete="off">
+    <button class="btn" id="btn-create">部屋を作る</button>
+    <div class="join-row">
+      <input id="room-code-input" type="text" placeholder="ルームコード" maxlength="4" style="text-transform:uppercase">
+      <button class="btn-outline" id="btn-join">参加</button>
+    </div>
+    <div class="error-msg" id="entry-error"></div>
+  </div>
+</div>
+
+<!-- Lobby Screen -->
+<div id="screen-lobby" class="screen">
+  <h2>ロビー</h2>
+  <div class="room-code" id="lobby-room-code">----</div>
+  <p style="color:var(--text-dim);font-size:0.85rem;">このコードを仲間に教えてください</p>
+  <ul class="player-list" id="lobby-player-list"></ul>
+  <button class="btn" id="btn-start" style="min-width:180px">ゲーム開始</button>
+  <p class="lobby-hint" id="lobby-hint">2〜6人で遊べます</p>
+</div>
+
+<!-- Game Screen -->
+<div id="screen-game" class="screen">
+  <div class="game-header">
+    <div class="deck-info">デッキ: <span id="deck-count">?</span>枚</div>
+    <div id="face-up-area" class="face-up-cards"></div>
+    <div id="tokens-to-win-info" style="font-size:0.8rem;color:var(--text-dim);margin-left:auto"></div>
+  </div>
+  <div class="opponents-area" id="opponents-area"></div>
+  <div class="game-log-area" id="game-log"></div>
+  <div class="my-area">
+    <div class="my-info">
+      <div class="my-name" id="my-name">-</div>
+      <div class="my-tokens" id="my-tokens">🏆 0</div>
+      <div class="token-dots" id="my-token-dots"></div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-top:6px">捨て札:</div>
+      <div class="my-discard" id="my-discard"></div>
+    </div>
+    <div class="hand-area" id="hand-area"></div>
+    <div class="play-btn-area">
+      <button class="btn" id="btn-play-card" disabled>プレイ</button>
+    </div>
+  </div>
+  <div class="status-bar">
+    <span id="turn-indicator">-</span>
+    <span id="ws-status" class="disconnected">切断</span>
+  </div>
+</div>
+
+<!-- Round End Screen -->
+<div id="screen-round-end" class="screen">
+  <h2 id="round-result-title">ラウンド終了</h2>
+  <div class="revealed-hands" id="revealed-hands"></div>
+  <div class="token-board" id="token-board"></div>
+  <div id="spy-bonus-msg" style="color:var(--gold);font-size:0.9rem"></div>
+  <button class="btn" id="btn-next-round" style="min-width:200px">次のラウンド</button>
+</div>
+
+<!-- Game Over Screen -->
+<div id="screen-game-over" class="screen">
+  <h2>ゲーム終了！</h2>
+  <div class="winner-display" id="game-over-winners"></div>
+  <button class="btn" id="btn-back-lobby" style="min-width:200px">ロビーに戻る</button>
+</div>
+
+<!-- Action Overlay -->
+<div class="action-overlay" id="action-overlay">
+  <div class="action-box" id="action-box">
+    <h3 id="action-title">アクション</h3>
+    <p id="action-desc"></p>
+    <div class="action-buttons" id="action-buttons"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+// ============================================================
+// Constants
+// ============================================================
+const CARD_NAMES = {
+  0: 'Spy', 1: 'Guard', 2: 'Priest', 3: 'Baron', 4: 'Handmaid',
+  5: 'Prince', 6: 'Chancellor', 7: 'King', 8: 'Countess', 9: 'Princess'
+};
+const CARD_DESC = {
+  0: 'ラウンド終了時、唯一のSpy生存者なら+1トークン',
+  1: '相手の手札を推測。当たれば脱落',
+  2: '相手の手札を覗く',
+  3: '相手と手札比較。低い方が脱落',
+  4: '次のターン開始まで保護',
+  5: '対象の手札を捨てて引き直させる',
+  6: '2枚引いて3枚から1枚選択',
+  7: '相手と手札を交換',
+  8: 'KingかPrinceがあれば必ずプレイ',
+  9: 'プレイ/捨てると即脱落'
+};
+
+// ============================================================
+// State
+// ============================================================
+let ws = null;
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+let myPlayerId = localStorage.getItem('ll_player_id') || uuidv4();
+let myRoomId = localStorage.getItem('ll_room_id') || null;
+let myName = '';
+let pendingMessage = null;
+let gameState = null;
+let selectedCardIndex = null;
+let reconnectTimer = null;
+let isHost = false;
+let pendingChancellorKept = null;
+let pendingChancellorBottom = [];
+
+localStorage.setItem('ll_player_id', myPlayerId);
+
+// ============================================================
+// Utils
+// ============================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showToast(msg, duration = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), duration);
+}
+
+function cardBg(val) {
+  return `var(--card-${val})`;
+}
+
+function makeCardEl(val, small = false) {
+  const el = document.createElement('div');
+  if (small) {
+    el.className = 'mini-card';
+    el.style.background = cardBg(val);
+    el.textContent = val;
+    el.title = CARD_NAMES[val];
+  } else {
+    el.className = 'card';
+    el.style.background = cardBg(val);
+    el.innerHTML = `<div class="card-value">${val}</div><div class="card-name">${CARD_NAMES[val]}</div><div class="card-desc">${CARD_DESC[val]}</div>`;
+  }
+  return el;
+}
+
+function addLog(msg) {
+  const log = document.getElementById('game-log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.textContent = msg;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function tokenDots(current, max) {
+  let html = '';
+  for (let i = 0; i < max; i++) {
+    html += `<div class="token-dot${i < current ? '' : ' empty'}"></div>`;
+  }
+  return html;
+}
+
+// ============================================================
+// WebSocket
+// ============================================================
+function connect() {
+  if (ws && ws.readyState <= 1) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = onOpen;
+  ws.onmessage = e => onMessage(JSON.parse(e.data));
+  ws.onclose = onClose;
+  ws.onerror = () => {};
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function onOpen() {
+  document.getElementById('ws-status').textContent = '接続済';
+  document.getElementById('ws-status').className = 'connected';
+  clearTimeout(reconnectTimer);
+
+  // Flush pending message (create_room / join from button click)
+  if (pendingMessage) {
+    send(pendingMessage);
+    pendingMessage = null;
+    return;
+  }
+
+  // If we had a room, try to reconnect
+  if (myRoomId && myName) {
+    send({ type: 'join', player_id: myPlayerId, name: myName, room_id: myRoomId });
+  }
+}
+
+function onClose() {
+  document.getElementById('ws-status').textContent = '切断';
+  document.getElementById('ws-status').className = 'disconnected';
+  reconnectTimer = setTimeout(connect, 2000);
+}
+
+function onMessage(msg) {
+  switch (msg.type) {
+    case 'pong': break;
+    case 'room_created':
+      myRoomId = msg.room_id;
+      localStorage.setItem('ll_room_id', myRoomId);
+      document.getElementById('lobby-room-code').textContent = myRoomId;
+      showScreen('screen-lobby');
+      break;
+    case 'player_joined':
+      // state_update will refresh lobby
+      break;
+    case 'state_update':
+      gameState = msg;
+      renderState(msg);
+      break;
+    case 'game_event':
+      handleGameEvent(msg);
+      break;
+    case 'await_input':
+      handleAwaitInput(msg);
+      break;
+    case 'round_end':
+      handleRoundEnd(msg);
+      break;
+    case 'game_over':
+      handleGameOver(msg);
+      break;
+    case 'error':
+      showToast(`エラー: ${msg.message}`);
+      document.getElementById('entry-error').textContent = msg.message;
+      break;
+  }
+}
+
+// ============================================================
+// State rendering
+// ============================================================
+function renderState(state) {
+  const phase = state.phase;
+  const me = state.players.find(p => p.player_id === state.your_player_id);
+  const tokensToWin = state.players.reduce((_, p) => _, 0) + (gameState ? 0 : 0);
+  isHost = me && state.players[0]?.player_id === state.your_player_id;
+
+  if (phase === 'lobby') {
+    showScreen('screen-lobby');
+    renderLobby(state);
+    return;
+  }
+
+  if (phase === 'playing' || phase === 'round_end' || phase === 'game_over') {
+    if (phase === 'playing') {
+      showScreen('screen-game');
+      renderGame(state, me);
+    }
+    // round_end and game_over handled by explicit messages
+  }
+}
+
+function renderLobby(state) {
+  const list = document.getElementById('lobby-player-list');
+  list.innerHTML = '';
+  state.players.forEach((p, i) => {
+    const li = document.createElement('li');
+    const crown = i === 0 ? '<span class="crown">♛ </span>' : '';
+    li.innerHTML = `${crown}${p.name}`;
+    list.appendChild(li);
+  });
+  const me = state.players.find(p => p.player_id === state.your_player_id);
+  const hostId = state.players[0]?.player_id;
+  const startBtn = document.getElementById('btn-start');
+  if (state.your_player_id === hostId) {
+    startBtn.disabled = state.players.length < 2;
+    startBtn.style.display = '';
+  } else {
+    startBtn.style.display = 'none';
+  }
+  document.getElementById('lobby-hint').textContent =
+    state.players.length < 2 ? 'あと1人以上必要です' : `${state.players.length}人参加中`;
+}
+
+function renderGame(state, me) {
+  if (!me) return;
+
+  const isMyTurn = state.current_player_id === me.player_id;
+  const tokensToWin = getTtw(state.players.length);
+
+  // Header
+  document.getElementById('deck-count').textContent = state.deck_count;
+  document.getElementById('tokens-to-win-info').textContent = `勝利条件: ${tokensToWin}トークン`;
+
+  const faceUpArea = document.getElementById('face-up-area');
+  faceUpArea.innerHTML = '';
+  if (state.face_up_cards && state.face_up_cards.length > 0) {
+    const lbl = document.createElement('span');
+    lbl.textContent = '表向き除外: ';
+    lbl.style.fontSize = '0.8rem';
+    lbl.style.color = 'var(--text-dim)';
+    faceUpArea.appendChild(lbl);
+    state.face_up_cards.forEach(v => faceUpArea.appendChild(makeCardEl(v, true)));
+  }
+
+  // Opponents
+  const oppArea = document.getElementById('opponents-area');
+  oppArea.innerHTML = '';
+  const pa = state.pending_action;
+  state.players.filter(p => p.player_id !== me.player_id).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'opponent-card';
+    div.dataset.playerId = p.player_id;
+    if (p.player_id === state.current_player_id) div.classList.add('current-turn');
+    if (p.eliminated) div.classList.add('eliminated');
+    if (p.protected) div.classList.add('protected');
+
+    const isCandidate = pa && pa.phase === 'await_target' &&
+      pa.acting_player_id === me.player_id &&
+      pa.candidate_target_ids.includes(p.player_id);
+    if (isCandidate) div.classList.add('target-candidate');
+
+    let statusText = '';
+    if (p.eliminated) statusText = '💀 脱落';
+    else if (p.protected) statusText = '🛡 保護中';
+
+    div.innerHTML = `
+      <div class="opp-name">${p.name}${p.player_id === state.players[0]?.player_id ? ' ♛' : ''}</div>
+      <div class="opp-tokens">🏆 ${p.tokens}</div>
+      <div class="token-dots">${tokenDots(p.tokens, tokensToWin)}</div>
+      <div class="opp-status">${statusText} ${p.hand_count > 0 && !p.eliminated ? '🃏' : ''}</div>
+      <div class="opp-discard"></div>
+    `;
+    const discardDiv = div.querySelector('.opp-discard');
+    p.discard_pile.forEach(v => discardDiv.appendChild(makeCardEl(v, true)));
+
+    if (isCandidate) {
+      div.addEventListener('click', () => selectTarget(p.player_id));
+    }
+    oppArea.appendChild(div);
+  });
+
+  // My info
+  document.getElementById('my-name').textContent =
+    me.name + (me.player_id === state.players[0]?.player_id ? ' ♛' : '') +
+    (isMyTurn ? ' ← あなたのターン' : '');
+  document.getElementById('my-tokens').textContent = `🏆 ${me.tokens}`;
+  document.getElementById('my-token-dots').innerHTML = tokenDots(me.tokens, tokensToWin);
+
+  const myDiscard = document.getElementById('my-discard');
+  myDiscard.innerHTML = '';
+  me.discard_pile.forEach(v => myDiscard.appendChild(makeCardEl(v, true)));
+
+  // Turn indicator
+  const curPlayer = state.players.find(p => p.player_id === state.current_player_id);
+  document.getElementById('turn-indicator').textContent =
+    isMyTurn ? 'あなたのターン' : `${curPlayer?.name || '?'} のターン`;
+
+  // Hand
+  renderHand(state, me, isMyTurn);
+}
+
+function getTtw(n) {
+  return {2:6, 3:5, 4:4, 5:3, 6:3}[n] || 6;
+}
+
+function renderHand(state, me, isMyTurn) {
+  const handArea = document.getElementById('hand-area');
+  handArea.innerHTML = '';
+  const pa = state.pending_action;
+  const waiting = pa && pa.phase !== 'await_target';
+  const hasPendingTarget = pa && pa.phase === 'await_target' && pa.acting_player_id === me.player_id;
+
+  // Check countess forced
+  const hasCountess = me.hand.includes(8);
+  const hasKingOrPrince = me.hand.includes(7) || me.hand.includes(5);
+  const countessForced = hasCountess && hasKingOrPrince;
+
+  me.hand.forEach((val, idx) => {
+    const el = makeCardEl(val);
+    const canPlay = isMyTurn && !waiting && !hasPendingTarget;
+    const countessDisabled = countessForced && val !== 8;
+
+    if (!canPlay || countessDisabled) {
+      el.classList.add('disabled');
+      el.style.cursor = 'not-allowed';
+    } else {
+      el.addEventListener('click', () => toggleCardSelection(idx));
+    }
+
+    if (selectedCardIndex === idx && canPlay && !countessDisabled) {
+      el.classList.add('selected');
+    }
+    handArea.appendChild(el);
+  });
+
+  // Play button
+  const playBtn = document.getElementById('btn-play-card');
+  const canPlay = isMyTurn && !waiting && !hasPendingTarget && selectedCardIndex !== null;
+  playBtn.disabled = !canPlay;
+}
+
+function toggleCardSelection(idx) {
+  selectedCardIndex = selectedCardIndex === idx ? null : idx;
+  if (gameState) renderHand(gameState, gameState.players.find(p => p.player_id === gameState.your_player_id),
+    gameState.current_player_id === gameState.your_player_id);
+}
+
+function selectTarget(targetId) {
+  send({ type: 'select_target', room_id: myRoomId, player_id: myPlayerId, target_id: targetId });
+  // Also handle self-target for Prince
+  hideActionOverlay();
+}
+
+// ============================================================
+// Game Events
+// ============================================================
+function handleGameEvent(msg) {
+  const d = msg.data;
+  if (d && d.description) addLog(d.description);
+
+  if (msg.event_type === 'priest_reveal' && d.player_id === myPlayerId) {
+    const cardNames = (d.target_hand || []).map(v => `${CARD_NAMES[v]}(${v})`).join(', ');
+    showToast(`${d.target_name} の手札: ${cardNames}`, 5000);
+    addLog(`→ あなたは ${d.target_name} の手札を確認: ${cardNames}`);
+  }
+}
+
+function handleAwaitInput(msg) {
+  if (msg.acting_player_id && msg.acting_player_id !== myPlayerId) return;
+
+  switch (msg.action_type) {
+    case 'select_target':
+      // Targets are highlighted on the board; show toast
+      showToast('対象プレイヤーを選んでください');
+      // Also show self-target button for Prince if self is a candidate
+      if (gameState) {
+        const pa = gameState.pending_action;
+        if (pa && pa.candidate_target_ids.includes(myPlayerId)) {
+          showTargetOverlay(msg, pa.candidate_target_ids);
+        }
+      }
+      break;
+    case 'guard_guess':
+      showGuardGuessOverlay(msg);
+      break;
+    case 'chancellor_return':
+      showChancellorOverlay(msg);
+      break;
+  }
+}
+
+function showTargetOverlay(msg, candidates) {
+  // Only show overlay if self is candidate (Prince targeting self)
+  if (!candidates.includes(myPlayerId)) return;
+
+  const box = document.getElementById('action-box');
+  document.getElementById('action-title').textContent = `${CARD_NAMES[msg.card_played]} の対象選択`;
+  document.getElementById('action-desc').textContent = '対象を選んでください（自分を含む）';
+
+  const btns = document.getElementById('action-buttons');
+  btns.innerHTML = '';
+
+  candidates.forEach(cid => {
+    const p = gameState.players.find(p => p.player_id === cid);
+    if (!p) return;
+    const btn = document.createElement('button');
+    btn.className = cid === myPlayerId ? 'btn' : 'btn-outline';
+    btn.textContent = cid === myPlayerId ? `自分 (${p.name})` : p.name;
+    btn.addEventListener('click', () => {
+      selectTarget(cid);
+    });
+    btns.appendChild(btn);
+  });
+
+  document.getElementById('action-overlay').classList.add('active');
+}
+
+function showGuardGuessOverlay(msg) {
+  document.getElementById('action-title').textContent = `Guard: ${msg.target_name} の手札を推測`;
+  document.getElementById('action-desc').textContent = 'Guard以外のカードを選んでください';
+
+  const btns = document.getElementById('action-buttons');
+  btns.innerHTML = '';
+
+  for (let v = 0; v <= 9; v++) {
+    if (v === 1) continue; // can't guess Guard
+    const btn = document.createElement('button');
+    btn.className = 'btn-outline';
+    btn.textContent = `${v} ${CARD_NAMES[v]}`;
+    btn.style.background = cardBg(v);
+    btn.style.border = 'none';
+    btn.style.color = '#fff';
+    btn.addEventListener('click', () => {
+      send({ type: 'guard_guess', room_id: myRoomId, player_id: myPlayerId, guessed_value: v });
+      hideActionOverlay();
+    });
+    btns.appendChild(btn);
+  }
+
+  document.getElementById('action-overlay').classList.add('active');
+}
+
+function showChancellorOverlay(msg) {
+  const hand = msg.chancellor_hand || [];
+  pendingChancellorKept = null;
+  pendingChancellorBottom = [];
+
+  document.getElementById('action-title').textContent = 'Chancellor: 手札を選ぶ';
+  document.getElementById('action-desc').textContent = `3枚の中から1枚を手元に残し、残り2枚をデッキ下に戻す順番を選んでください`;
+
+  const btns = document.getElementById('action-buttons');
+  btns.innerHTML = '';
+
+  // Render each card
+  const cardContainer = document.createElement('div');
+  cardContainer.className = 'chancellor-cards';
+
+  hand.forEach((val, idx) => {
+    const el = makeCardEl(val);
+    el.dataset.idx = idx;
+    el.dataset.val = val;
+    el.addEventListener('click', () => selectChancellorKept(val, idx, hand, cardContainer, confirmBtn));
+    cardContainer.appendChild(el);
+  });
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn';
+  confirmBtn.textContent = '確定';
+  confirmBtn.disabled = true;
+  confirmBtn.addEventListener('click', () => {
+    if (pendingChancellorKept === null) return;
+    send({
+      type: 'chancellor_return',
+      room_id: myRoomId,
+      player_id: myPlayerId,
+      kept_card: pendingChancellorKept,
+      bottom_order: pendingChancellorBottom,
+    });
+    hideActionOverlay();
+  });
+
+  btns.appendChild(cardContainer);
+
+  const orderLabel = document.createElement('p');
+  orderLabel.id = 'chancellor-order-label';
+  orderLabel.textContent = '手札に残すカードをクリックしてください';
+  orderLabel.style.marginTop = '8px';
+  btns.appendChild(orderLabel);
+  btns.appendChild(confirmBtn);
+
+  document.getElementById('action-overlay').classList.add('active');
+}
+
+function selectChancellorKept(val, idx, hand, cardContainer, confirmBtn) {
+  pendingChancellorKept = val;
+  const remaining = hand.filter((_, i) => i !== idx);
+
+  // Update card visuals
+  Array.from(cardContainer.children).forEach((el, i) => {
+    if (parseInt(el.dataset.idx) === idx) {
+      el.style.border = '2px solid var(--gold-light)';
+      el.style.transform = 'translateY(-10px)';
+    } else {
+      el.style.border = '2px dashed var(--text-dim)';
+      el.style.transform = '';
+    }
+  });
+
+  // For bottom order: if only 1 remaining, auto-set
+  if (remaining.length <= 1) {
+    pendingChancellorBottom = remaining;
+    confirmBtn.disabled = false;
+    document.getElementById('chancellor-order-label').textContent =
+      `残り: ${remaining.map(v => CARD_NAMES[v]).join(', ')} をデッキ下に戻します`;
+    return;
+  }
+
+  // 2 remaining: show order selection buttons
+  const label = document.getElementById('chancellor-order-label');
+  label.textContent = 'デッキ下に戻す順番を選んでください（先にクリックしたカードが一番下）';
+
+  // Remove existing order buttons
+  const existing = document.getElementById('chancellor-order-btns');
+  if (existing) existing.remove();
+
+  const orderDiv = document.createElement('div');
+  orderDiv.id = 'chancellor-order-btns';
+  orderDiv.style.display = 'flex';
+  orderDiv.style.gap = '8px';
+  orderDiv.style.flexWrap = 'wrap';
+  orderDiv.style.marginTop = '8px';
+
+  let orderSelected = [];
+  remaining.forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-outline';
+    btn.textContent = `${v} ${CARD_NAMES[v]}`;
+    btn.addEventListener('click', () => {
+      orderSelected.push(v);
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      if (orderSelected.length === remaining.length) {
+        pendingChancellorBottom = orderSelected;
+        confirmBtn.disabled = false;
+        label.textContent = `戻す順: ${orderSelected.map(v => CARD_NAMES[v]).join(' → ')} (下から)`;
+      }
+    });
+    orderDiv.appendChild(btn);
+  });
+
+  label.after(orderDiv);
+}
+
+function hideActionOverlay() {
+  document.getElementById('action-overlay').classList.remove('active');
+}
+
+// ============================================================
+// Round End / Game Over
+// ============================================================
+function handleRoundEnd(msg) {
+  // Update token board
+  const board = document.getElementById('token-board');
+  board.innerHTML = '';
+  (msg.token_updates || []).forEach(u => {
+    const div = document.createElement('div');
+    div.className = 'token-entry';
+    div.innerHTML = `${u.name}: <span>${u.tokens}</span>`;
+    board.appendChild(div);
+  });
+
+  // Revealed hands
+  const revealed = document.getElementById('revealed-hands');
+  revealed.innerHTML = '';
+  (msg.revealed_hands || []).forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'revealed-hand';
+    if (msg.round_winner_ids && msg.round_winner_ids.includes(r.player_id)) {
+      div.classList.add('winner');
+    }
+    const cardNames = (r.hand || []).map(v => `${v} ${CARD_NAMES[v]}`).join(', ');
+    div.innerHTML = `<div class="r-name">${r.name}</div><div>${cardNames || '（脱落）'}</div>`;
+    revealed.appendChild(div);
+  });
+
+  // Spy bonus
+  const spyMsg = document.getElementById('spy-bonus-msg');
+  if (msg.spy_bonus_id) {
+    const winner = (msg.token_updates || []).find(u => u.player_id === msg.spy_bonus_id);
+    spyMsg.textContent = `🕵️ ${winner?.name || msg.spy_bonus_id} がSpyボーナス +1トークンを獲得！`;
+  } else {
+    spyMsg.textContent = '';
+  }
+
+  // Round winners
+  const winnerNames = (msg.round_winner_ids || []).map(wid => {
+    const u = (msg.token_updates || []).find(u => u.player_id === wid);
+    return u?.name || wid;
+  });
+  document.getElementById('round-result-title').textContent =
+    winnerNames.length > 0 ? `${winnerNames.join(', ')} がラウンド勝利！` : 'ラウンド終了';
+
+  // Host shows next button
+  const nextBtn = document.getElementById('btn-next-round');
+  if (gameState) {
+    const hostId = gameState.players[0]?.player_id;
+    nextBtn.style.display = gameState.your_player_id === hostId ? '' : 'none';
+  }
+
+  showScreen('screen-round-end');
+}
+
+function handleGameOver(msg) {
+  if (!gameState) return;
+  const winnerNames = (msg.winner_ids || []).map(wid => {
+    const p = gameState.players.find(p => p.player_id === wid);
+    return p?.name || wid;
+  });
+  document.getElementById('game-over-winners').innerHTML =
+    `<p style="color:var(--gold);font-size:1.5rem">${winnerNames.join(', ')}</p><p>おめでとうございます！</p>`;
+  setTimeout(() => showScreen('screen-game-over'), 2000);
+}
+
+// ============================================================
+// Button handlers
+// ============================================================
+document.getElementById('btn-create').addEventListener('click', () => {
+  const name = document.getElementById('name-input').value.trim();
+  if (!name) { document.getElementById('entry-error').textContent = '名前を入力してください'; return; }
+  myName = name;
+  document.getElementById('entry-error').textContent = '';
+  const msg = { type: 'create_room', player_id: myPlayerId, name };
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    send(msg);
+  } else {
+    pendingMessage = msg;
+    connect();
+  }
+});
+
+document.getElementById('btn-join').addEventListener('click', () => {
+  const name = document.getElementById('name-input').value.trim();
+  const roomId = document.getElementById('room-code-input').value.trim().toUpperCase();
+  if (!name) { document.getElementById('entry-error').textContent = '名前を入力してください'; return; }
+  if (!roomId) { document.getElementById('entry-error').textContent = 'ルームコードを入力してください'; return; }
+  myName = name;
+  myRoomId = roomId;
+  document.getElementById('entry-error').textContent = '';
+  const msg = { type: 'join', player_id: myPlayerId, name, room_id: roomId };
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    send(msg);
+  } else {
+    pendingMessage = msg;
+    connect();
+  }
+});
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  send({ type: 'start_game', room_id: myRoomId, player_id: myPlayerId });
+});
+
+document.getElementById('btn-play-card').addEventListener('click', () => {
+  if (selectedCardIndex === null) return;
+  send({ type: 'play_card', room_id: myRoomId, player_id: myPlayerId, card_index: selectedCardIndex });
+  selectedCardIndex = null;
+});
+
+document.getElementById('btn-next-round').addEventListener('click', () => {
+  send({ type: 'next_round', room_id: myRoomId, player_id: myPlayerId });
+});
+
+document.getElementById('btn-back-lobby').addEventListener('click', () => {
+  myRoomId = null;
+  localStorage.removeItem('ll_room_id');
+  gameState = null;
+  showScreen('screen-entry');
+});
+
+// Enter key support
+document.getElementById('name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-create').click();
+});
+document.getElementById('room-code-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-join').click();
+});
+
+// ============================================================
+// Ping / keepalive
+// ============================================================
+setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) send({ type: 'ping' }); }, 30000);
+
+// ============================================================
+// Init
+// ============================================================
+connect();
+
+// If we have a stored room, show entry screen with code pre-filled
+if (myRoomId) {
+  document.getElementById('room-code-input').value = myRoomId;
+}
+</script>
+</body>
+</html>
