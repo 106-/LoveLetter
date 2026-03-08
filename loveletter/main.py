@@ -36,22 +36,26 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class ConnectionManager:
     def __init__(self):
+        """ルーム状態・接続情報・ルームロックを保持する管理オブジェクトを初期化する。"""
         self.rooms: dict[str, Room] = {}
         self.connections: dict[str, dict[str, WebSocket]] = {}
         self.room_locks: dict[str, asyncio.Lock] = {}
 
     def _gen_room_id(self) -> str:
+        """既存ルームと重複しない4文字のルームIDを生成する。"""
         while True:
             rid = "".join(random.choices(string.ascii_uppercase, k=4))
             if rid not in self.rooms:
                 return rid
 
     async def connect(self, ws: WebSocket, room_id: str, player_id: str) -> None:
+        """指定ルームのプレイヤーにWebSocket接続を紐づける。"""
         if room_id not in self.connections:
             self.connections[room_id] = {}
         self.connections[room_id][player_id] = ws
 
     def disconnect(self, room_id: str, player_id: str) -> None:
+        """接続情報を破棄し、プレイヤーの接続状態を切断に更新する。"""
         if room_id in self.connections:
             self.connections[room_id].pop(player_id, None)
         room = self.rooms.get(room_id)
@@ -61,6 +65,7 @@ class ConnectionManager:
                 p.is_connected = False
 
     async def send_to(self, room_id: str, player_id: str, msg: dict) -> None:
+        """特定プレイヤーへメッセージを送信する。"""
         ws = self.connections.get(room_id, {}).get(player_id)
         if ws:
             try:
@@ -69,6 +74,7 @@ class ConnectionManager:
                 pass
 
     async def broadcast(self, room_id: str, msg: dict) -> None:
+        """ルーム内の接続中プレイヤー全員へメッセージを送信する。"""
         for pid, ws in list(self.connections.get(room_id, {}).items()):
             try:
                 await ws.send_json(msg)
@@ -76,6 +82,7 @@ class ConnectionManager:
                 pass
 
     async def broadcast_state(self, room_id: str) -> None:
+        """ルーム内の各プレイヤー視点で状態を組み立てて一斉送信する。"""
         room = self.rooms.get(room_id)
         if not room:
             return
@@ -86,6 +93,7 @@ class ConnectionManager:
                 pass
 
     def _build_state(self, room: Room, viewer_id: str) -> dict:
+        """閲覧者ごとの秘匿情報を反映した状態ペイロードを生成する。"""
         current_player = room.players[room.current_player_idx] if room.players else None
         players_data = []
         for p in room.players:
@@ -136,6 +144,7 @@ class ConnectionManager:
         }
 
     def get_lock(self, room_id: str) -> asyncio.Lock:
+        """ルーム単位の排他制御用ロックを取得または生成する。"""
         if room_id not in self.room_locks:
             self.room_locks[room_id] = asyncio.Lock()
         return self.room_locks[room_id]
@@ -150,6 +159,7 @@ manager = ConnectionManager()
 
 
 async def handle_create_room(ws: WebSocket, data: dict) -> str:
+    """ルーム作成要求を処理してホストを参加させ、初期状態を配信する。"""
     player_id = data["player_id"]
     name = data.get("name", "Player")
     room_id = manager._gen_room_id()
@@ -166,6 +176,7 @@ async def handle_create_room(ws: WebSocket, data: dict) -> str:
 
 
 async def handle_join(ws: WebSocket, data: dict) -> None:
+    """ルーム参加または再接続要求を処理する。"""
     player_id = data["player_id"]
     name = data.get("name", "Player")
     room_id = data["room_id"].upper()
@@ -217,6 +228,7 @@ async def handle_join(ws: WebSocket, data: dict) -> None:
 
 
 async def handle_start_game(ws: WebSocket, data: dict) -> None:
+    """ゲーム開始要求を検証し、ラウンド初期化を実行する。"""
     room_id = data["room_id"]
     player_id = data["player_id"]
     room = manager.rooms.get(room_id)
@@ -252,6 +264,7 @@ async def handle_start_game(ws: WebSocket, data: dict) -> None:
 
 
 async def handle_play_card(ws: WebSocket, data: dict) -> None:
+    """カードプレイ要求を処理し、必要に応じて追加入力待ち状態へ遷移させる。"""
     room_id = data["room_id"]
     player_id = data["player_id"]
     card_index = data["card_index"]
@@ -419,6 +432,7 @@ async def handle_play_card(ws: WebSocket, data: dict) -> None:
 
 
 async def handle_select_target(ws: WebSocket, data: dict) -> None:
+    """対象選択入力を処理し、効果解決または追加入力待ちへ進める。"""
     room_id = data["room_id"]
     player_id = data["player_id"]
     target_id = data["target_id"]
@@ -489,6 +503,7 @@ async def handle_select_target(ws: WebSocket, data: dict) -> None:
 
 
 async def handle_guard_guess(ws: WebSocket, data: dict) -> None:
+    """Guardの推測入力を処理して効果を解決する。"""
     room_id = data["room_id"]
     player_id = data["player_id"]
     guessed_value = int(data["guessed_value"])
@@ -537,6 +552,7 @@ async def handle_guard_guess(ws: WebSocket, data: dict) -> None:
 
 
 async def handle_chancellor_return(ws: WebSocket, data: dict) -> None:
+    """Chancellor後の手札選択・戻し順入力を処理する。"""
     room_id = data["room_id"]
     player_id = data["player_id"]
     kept_card = int(data["kept_card"])
@@ -600,6 +616,7 @@ async def handle_chancellor_return(ws: WebSocket, data: dict) -> None:
 
 
 async def handle_next_round(ws: WebSocket, data: dict) -> None:
+    """次ラウンド開始要求を処理し、先手決定後にラウンドを再初期化する。"""
     room_id = data["room_id"]
     player_id = data["player_id"]
     room = manager.rooms.get(room_id)
@@ -631,6 +648,7 @@ async def handle_next_round(ws: WebSocket, data: dict) -> None:
 
 
 async def _end_round(room_id: str) -> None:
+    """ラウンド終了処理を実行し、必要ならゲーム終了へ遷移させる。"""
     room = manager.rooms.get(room_id)
     if not room:
         return
@@ -677,11 +695,13 @@ async def _end_round(room_id: str) -> None:
 
 @app.get("/")
 async def index():
+    """フロントエンドのエントリHTMLを返す。"""
     return FileResponse("static/index.html")
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    """WebSocketメッセージを受信して各種ハンドラへ振り分ける。"""
     await ws.accept()
     room_id: Optional[str] = None
     player_id: Optional[str] = None

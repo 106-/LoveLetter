@@ -85,6 +85,7 @@ TOKENS_TO_WIN = {2: 6, 3: 5, 4: 4, 5: 3, 6: 3}
 class GameEngine:
     @staticmethod
     def build_deck() -> list[int]:
+        """ゲームで使用するカード山札を構築してシャッフルして返す。"""
         deck = (
             [SPY] * 2
             + [GUARD] * 6
@@ -102,6 +103,7 @@ class GameEngine:
 
     @staticmethod
     def setup_round(room: Room) -> None:
+        """ラウンド開始状態を初期化し、配札と先手の初回ドローを行う。"""
         for p in room.players:
             p.hand = []
             p.discard_pile = []
@@ -136,6 +138,7 @@ class GameEngine:
 
     @staticmethod
     def validate_play(room: Room, player: Player, card_value: int) -> Optional[str]:
+        """指定カードがプレイ可能かを検証し、不可の場合はエラーコードを返す。"""
         if card_value not in player.hand:
             return "CARD_NOT_IN_HAND"
         # Countess forced play
@@ -148,6 +151,7 @@ class GameEngine:
 
     @staticmethod
     def compute_valid_targets(room: Room, acting: Player, card_value: int) -> list[str]:
+        """カード効果に応じた有効な対象プレイヤーID一覧を返す。"""
         others = [
             p
             for p in room.players
@@ -166,6 +170,7 @@ class GameEngine:
 
     @staticmethod
     def _get_player(room: Room, player_id: str) -> Optional[Player]:
+        """ルーム内からプレイヤーIDに一致するプレイヤーを取得する。"""
         for p in room.players:
             if p.player_id == player_id:
                 return p
@@ -175,7 +180,7 @@ class GameEngine:
     def resolve_card(
         room: Room, acting: Player, card_value: int, target: Optional[Player] = None
     ) -> list[dict]:
-        """Resolve card effect. Returns list of game events."""
+        """Guard以外のカード効果を解決し、発生したゲームイベント一覧を返す。"""
         events: list[dict] = []
 
         if card_value == SPY:
@@ -378,6 +383,7 @@ class GameEngine:
     def resolve_guard(
         room: Room, acting: Player, target: Player, guessed_value: int
     ) -> list[dict]:
+        """Guardの推測処理を解決し、結果イベントを返す。"""
         hit = bool(target.hand and target.hand[0] == guessed_value)
         if hit:
             target.eliminated = True
@@ -403,6 +409,7 @@ class GameEngine:
 
     @staticmethod
     def check_round_end(room: Room) -> bool:
+        """ラウンド終了条件（生存者1人以下または山札枯渇）を判定する。"""
         alive = [p for p in room.players if not p.eliminated]
         if len(alive) <= 1:
             return True
@@ -412,6 +419,7 @@ class GameEngine:
 
     @staticmethod
     def evaluate_round_winner(room: Room) -> list[str]:
+        """ラウンド終了時点の勝者プレイヤーID一覧を算出する。"""
         alive = [p for p in room.players if not p.eliminated]
         if not alive:
             return []
@@ -421,6 +429,7 @@ class GameEngine:
 
     @staticmethod
     def award_tokens(room: Room, winner_ids: list[str]) -> dict:
+        """勝者とSpyボーナスを反映してトークンを付与し、付与情報を返す。"""
         spy_bonus_id = None
         spy_survivors = [p for p in room.players if p.played_spy and not p.eliminated]
         if len(spy_survivors) == 1:
@@ -435,12 +444,13 @@ class GameEngine:
 
     @staticmethod
     def check_game_winner(room: Room) -> list[str]:
+        """ゲーム勝利条件を満たしたプレイヤーID一覧を返す。"""
         winners = [p for p in room.players if p.tokens >= room.tokens_to_win]
         return [p.player_id for p in winners]
 
     @staticmethod
     def advance_turn(room: Room) -> None:
-        """Move to next non-eliminated player, clear their Handmaid protection, draw a card."""
+        """次の生存プレイヤーへ手番を進め、保護解除とドロー処理を行う。"""
         alive = [p for p in room.players if not p.eliminated]
         if not alive:
             return
