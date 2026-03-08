@@ -91,6 +91,49 @@ body {
 .btn-outline:hover { background: var(--gold); color: #0d1b2a; }
 .join-row { display: flex; gap: 8px; }
 .join-row input { flex: 1; }
+.btn-small { font-size: 0.78rem; padding: 6px 10px; }
+.room-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+.room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.room-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.room-meta { min-width: 0; }
+.room-id {
+  color: var(--gold-light);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.room-detail {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.room-empty {
+  background: var(--surface);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  padding: 10px;
+  text-align: center;
+}
 .error-msg { color: var(--red); font-size: 0.85rem; text-align: center; min-height: 18px; }
 
 /* ===== LOBBY ===== */

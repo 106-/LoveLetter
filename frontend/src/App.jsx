@@ -92,8 +92,9 @@ export default function App() {
   const [myName, setMyName] = useState('');
   const [screen, setScreen] = useState('entry');
   const [entryName, setEntryName] = useState('');
-  const [roomCodeInput, setRoomCodeInput] = useState(() => localStorage.getItem('ll_room_id') || '');
   const [entryError, setEntryError] = useState('');
+  const [availableRooms, setAvailableRooms] = useState([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
   const [wsStatus, setWsStatus] = useState('切断');
   const [wsConnected, setWsConnected] = useState(false);
   const [gameState, setGameState] = useState(null);
@@ -140,6 +141,20 @@ export default function App() {
 
   const addLog = useCallback((message) => {
     setGameLog((prev) => [...prev, message]);
+  }, []);
+
+  const fetchRooms = useCallback(async () => {
+    setRoomsLoading(true);
+    try {
+      const response = await fetch('/api/rooms', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      setAvailableRooms(Array.isArray(payload.rooms) ? payload.rooms : []);
+    } catch {
+      setAvailableRooms([]);
+    } finally {
+      setRoomsLoading(false);
+    }
   }, []);
 
   const send = useCallback((payload) => {
@@ -235,7 +250,6 @@ export default function App() {
           break;
         case 'room_created':
           setMyRoomId(msg.room_id);
-          setRoomCodeInput(msg.room_id);
           setScreen('lobby');
           break;
         case 'player_joined':
@@ -333,6 +347,13 @@ export default function App() {
     };
   }, [connect, send]);
 
+  useEffect(() => {
+    if (screen !== 'entry') return undefined;
+    fetchRooms();
+    const timer = setInterval(fetchRooms, 3000);
+    return () => clearInterval(timer);
+  }, [fetchRooms, screen]);
+
   const me = useMemo(() => {
     if (!gameState) return null;
     return gameState.players.find((p) => p.player_id === gameState.your_player_id) || null;
@@ -429,15 +450,10 @@ export default function App() {
     }
   };
 
-  const onJoinRoom = () => {
+  const onJoinRoom = (roomId) => {
     const name = entryName.trim();
-    const roomId = roomCodeInput.trim().toUpperCase();
     if (!name) {
       setEntryError('名前を入力してください');
-      return;
-    }
-    if (!roomId) {
-      setEntryError('ルームコードを入力してください');
       return;
     }
 
@@ -671,22 +687,36 @@ export default function App() {
           <button className="btn" id="btn-create" onClick={onCreateRoom}>
             部屋を作る
           </button>
-          <div className="join-row">
-            <input
-              id="room-code-input"
-              type="text"
-              placeholder="ルームコード"
-              maxLength={4}
-              style={{ textTransform: 'uppercase' }}
-              value={roomCodeInput}
-              onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onJoinRoom();
-              }}
-            />
-            <button className="btn-outline" id="btn-join" onClick={onJoinRoom}>
-              参加
+          <div className="room-list-header">
+            <span>公開ルーム一覧</span>
+            <button className="btn-outline btn-small" onClick={fetchRooms}>
+              更新
             </button>
+          </div>
+          <div className="room-list">
+            {availableRooms.length === 0 ? (
+              <div className="room-empty">
+                {roomsLoading ? 'ルーム一覧を読み込み中...' : '入室可能なルームはありません'}
+              </div>
+            ) : (
+              availableRooms.map((room) => (
+                <div key={room.room_id} className="room-item">
+                  <div className="room-meta">
+                    <div className="room-id">{room.room_id}</div>
+                    <div className="room-detail">
+                      ホスト: {room.host_name} / {room.player_count}人
+                    </div>
+                  </div>
+                  <button
+                    className="btn-outline btn-small"
+                    disabled={!entryName.trim()}
+                    onClick={() => onJoinRoom(room.room_id)}
+                  >
+                    参加
+                  </button>
+                </div>
+              ))
+            )}
           </div>
           <div className="error-msg" id="entry-error">
             {entryError}

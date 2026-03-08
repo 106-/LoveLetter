@@ -693,6 +693,33 @@ async def _end_round(room_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+@app.get("/api/rooms")
+async def list_rooms():
+    """入室可能なルーム（ロビー状態かつ満員でない）一覧を返す。"""
+    rooms = []
+    for room in manager.rooms.values():
+        if room.phase != "lobby":
+            continue
+        if len(room.players) >= 6:
+            continue
+
+        host = GameEngine._get_player(room, room.host_id)
+        rooms.append(
+            {
+                "room_id": room.room_id,
+                "host_name": host.name
+                if host
+                else room.players[0].name
+                if room.players
+                else "",
+                "player_count": len(room.players),
+            }
+        )
+
+    rooms.sort(key=lambda r: r["room_id"])
+    return {"rooms": rooms}
+
+
 @app.get("/")
 async def index():
     """フロントエンドのエントリHTMLを返す。"""
