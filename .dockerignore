@@ -2,3 +2,6 @@
 __pycache__
 *.pyc
 .git
+frontend/node_modules
+static/index.html
+static/assets

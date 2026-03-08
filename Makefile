@@ -1,5 +1,7 @@
 UV := uv
+NPM := npm
 PROJECT := .
+FRONTEND_DIR := frontend
 
 APP_MODULE := loveletter.main:app
 HOST ?= 0.0.0.0
@@ -9,10 +11,16 @@ SIM_GAMES ?= 200
 SIM_PLAYER_COUNTS ?= 2 3 4 5 6
 SIM_BASE_SEED ?= 20260308
 
-.PHONY: run format test
+.PHONY: run format test ui-dev ui-build
 
-run:
+run: ui-build
 	$(UV) run --project $(PROJECT) uvicorn $(APP_MODULE) --host $(HOST) --port $(PORT) --reload
+
+ui-dev:
+	cd $(FRONTEND_DIR) && $(NPM) run dev
+
+ui-build:
+	cd $(FRONTEND_DIR) && $(NPM) run build
 
 format:
 	$(UV) run --project $(PROJECT) ruff check --select I --fix .

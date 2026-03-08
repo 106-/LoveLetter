@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Frontend
+frontend/node_modules/
+frontend/.vite/
+static/index.html
+static/assets/
