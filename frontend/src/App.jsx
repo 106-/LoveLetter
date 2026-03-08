@@ -87,8 +87,8 @@ function Card({ val, small = false, selected = false, disabled = false, onClick 
 }
 
 export default function App() {
-  const [myPlayerId] = useState(() => localStorage.getItem('ll_player_id') || uuidv4());
-  const [myRoomId, setMyRoomId] = useState(() => localStorage.getItem('ll_room_id') || '');
+  const [myPlayerId] = useState(() => sessionStorage.getItem('ll_player_id') || uuidv4());
+  const [myRoomId, setMyRoomId] = useState(() => sessionStorage.getItem('ll_room_id') || '');
   const [myName, setMyName] = useState('');
   const [screen, setScreen] = useState('entry');
   const [entryName, setEntryName] = useState('');
@@ -115,12 +115,12 @@ export default function App() {
   const gameStateRef = useRef(gameState);
 
   useEffect(() => {
-    localStorage.setItem('ll_player_id', myPlayerId);
+    sessionStorage.setItem('ll_player_id', myPlayerId);
   }, [myPlayerId]);
 
   useEffect(() => {
     myRoomIdRef.current = myRoomId;
-    if (myRoomId) localStorage.setItem('ll_room_id', myRoomId);
+    if (myRoomId) sessionStorage.setItem('ll_room_id', myRoomId);
   }, [myRoomId]);
 
   useEffect(() => {
@@ -486,7 +486,7 @@ export default function App() {
 
   const onBackLobby = () => {
     setMyRoomId('');
-    localStorage.removeItem('ll_room_id');
+    sessionStorage.removeItem('ll_room_id');
     setGameState(null);
     setRoundEndMsg(null);
     setGameOverNames([]);
