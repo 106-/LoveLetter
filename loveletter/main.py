@@ -1009,7 +1009,7 @@ async def _end_round(room_id: str) -> None:
 async def list_ai_providers():
     """APIキーが設定済みのAIプロバイダ一覧を返す。"""
     available = [
-        p for p in ai_agent.SUPPORTED_AI_PROVIDERS if ai_agent._provider_has_key(p)
+        p for p in ai_agent.SUPPORTED_AI_PROVIDERS if ai_agent._provider_is_available(p)
     ]
     return {"providers": available}
 

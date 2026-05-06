@@ -25,20 +25,18 @@ load_dotenv()
 
 SUPPORTED_AI_PROVIDERS = ("openai", "anthropic", "gemini", "xai")
 
-DEFAULT_MODEL_BY_PROVIDER = {
-    "openai": os.getenv("LITELLM_MODEL_OPENAI", "openai/gpt-4o-mini"),
-    "anthropic": os.getenv(
-        "LITELLM_MODEL_ANTHROPIC", "anthropic/claude-3-5-haiku-latest"
-    ),
-    "gemini": os.getenv("LITELLM_MODEL_GEMINI", "gemini/gemini-2.5-flash-lite"),
-    "xai": os.getenv("LITELLM_MODEL_XAI", "xai/grok-3-mini"),
-}
-
-KEY_ENV_BY_PROVIDER = {
+KEY_ENV_BY_PROVIDER: dict[str, tuple[str, ...]] = {
     "openai": ("OPENAI_API_KEY",),
     "anthropic": ("ANTHROPIC_API_KEY",),
     "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     "xai": ("XAI_API_KEY",),
+}
+
+MODEL_ENV_BY_PROVIDER: dict[str, str] = {
+    "openai": "LITELLM_MODEL_OPENAI",
+    "anthropic": "LITELLM_MODEL_ANTHROPIC",
+    "gemini": "LITELLM_MODEL_GEMINI",
+    "xai": "LITELLM_MODEL_XAI",
 }
 
 SYSTEM_PROMPT = """\
@@ -89,12 +87,18 @@ def normalize_provider(provider: str | None) -> str | None:
     return None
 
 
-def resolve_model(provider: str) -> str:
-    return DEFAULT_MODEL_BY_PROVIDER[provider]
+def resolve_model(provider: str) -> str | None:
+    """LITELLM_MODEL_* が設定されていればその値を、未設定なら None を返す。"""
+    return os.getenv(MODEL_ENV_BY_PROVIDER[provider]) or None
 
 
 def _provider_has_key(provider: str) -> bool:
     return any(os.getenv(env_name) for env_name in KEY_ENV_BY_PROVIDER[provider])
+
+
+def _provider_is_available(provider: str) -> bool:
+    """APIキーとモデル名の両方が設定されている場合のみ True。"""
+    return _provider_has_key(provider) and resolve_model(provider) is not None
 
 
 def _resolve_api_key(provider: str) -> str | None:
@@ -185,11 +189,13 @@ def _parse_json_text(text: str) -> dict[str, Any] | None:
 def _query_model(
     *,
     provider: str,
-    model: str,
+    model: str | None,
     payload: dict[str, Any],
     schema_hint: dict[str, Any],
 ) -> dict[str, Any] | None:
     if completion is None:
+        return None
+    if not model:
         return None
     if not _provider_has_key(provider):
         return None
@@ -238,7 +244,7 @@ def choose_card_index(
     room: Room, acting: Player, legal_indices: list[int], recent_logs: list[str]
 ) -> tuple[int, bool]:
     provider = normalize_provider(acting.ai_provider)
-    if not provider:
+    if not provider or not _provider_is_available(provider):
         return random.choice(legal_indices), False
     model = resolve_model(provider)
 
@@ -272,7 +278,7 @@ def choose_target_id(
     recent_logs: list[str],
 ) -> tuple[str, bool]:
     provider = normalize_provider(acting.ai_provider)
-    if not provider:
+    if not provider or not _provider_is_available(provider):
         return random.choice(candidate_target_ids), False
     model = resolve_model(provider)
 
@@ -300,7 +306,7 @@ def choose_guard_guess(
 ) -> tuple[int, bool]:
     legal_guesses = [v for v in range(10) if v != GUARD]
     provider = normalize_provider(acting.ai_provider)
-    if not provider:
+    if not provider or not _provider_is_available(provider):
         return random.choice(legal_guesses), False
     model = resolve_model(provider)
 
@@ -329,7 +335,7 @@ def choose_chancellor_return(
     recent_logs: list[str],
 ) -> tuple[int, list[int], bool]:
     provider = normalize_provider(acting.ai_provider)
-    if not provider:
+    if not provider or not _provider_is_available(provider):
         kept_index = random.randrange(len(chancellor_hand))
         remaining = [i for i in range(len(chancellor_hand)) if i != kept_index]
         random.shuffle(remaining)
