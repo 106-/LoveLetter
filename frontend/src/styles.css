@@ -167,8 +167,52 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: space-between;
 }
 .player-list li .crown { color: var(--gold); }
+.ai-tag {
+  background: rgba(41, 128, 185, 0.2);
+  border: 1px solid rgba(41, 128, 185, 0.5);
+  border-radius: 999px;
+  color: #9fd6ff;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+}
+.ai-add-panel {
+  background: var(--surface);
+  border: 1px solid var(--surface2);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 360px;
+  padding: 10px 12px;
+}
+.ai-add-title {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.ai-add-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-add-row select,
+.ai-add-row input {
+  background: var(--surface2);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.86rem;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.ai-add-row select {
+  min-width: 130px;
+}
+.ai-add-row input {
+  flex: 1;
+}
 .lobby-hint { color: var(--text-dim); font-size: 0.85rem; }
 
 /* ===== GAME ===== */
@@ -403,3 +447,21 @@ body {
 }
 .status-bar .connected { color: var(--green); }
 .status-bar .disconnected { color: var(--red); }
+
+/* ターン待ちスピナー */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.turn-spinner {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.4em;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
