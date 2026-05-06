@@ -5,6 +5,8 @@ description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.135.1",
+    "litellm>=1.76.1",
+    "python-dotenv>=1.1.1",
     "uvicorn[standard]>=0.41.0",
 ]
 
@@ -12,4 +14,3 @@ dependencies = [
 dev = [
     "ruff>=0.15.5",
 ]
-

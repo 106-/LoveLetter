@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 import string
+import uuid
 from typing import Optional
 
 import uvicorn
@@ -10,6 +12,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import ai_agent
 from .game_logic import (
     CARD_NAMES,
     CHANCELLOR,
@@ -23,6 +26,11 @@ from .game_logic import (
     PendingAction,
     Player,
     Room,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
 app = FastAPI()
@@ -106,6 +114,8 @@ class ConnectionManager:
                 "protected": p.protected,
                 "played_spy": p.played_spy,
                 "is_connected": p.is_connected,
+                "is_ai": p.is_ai,
+                "ai_provider": p.ai_provider,
             }
             if p.player_id == viewer_id:
                 pd["hand"] = p.hand
@@ -151,6 +161,221 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+ACTION_LOG_LIMIT = 40
+MAX_AI_STEPS_PER_TICK = 80
+
+
+class _NoopWebSocket:
+    """AI内部実行用: エラー受信だけ行うダミーWebSocket。"""
+
+    def __init__(self) -> None:
+        self.last_error: Optional[dict] = None
+
+    async def send_json(self, msg: dict) -> None:
+        if msg.get("type") == "error":
+            self.last_error = msg
+
+
+def _append_action_log(room: Room, message: str) -> None:
+    text = message.strip()
+    if not text:
+        return
+    room.action_log.append(text)
+    if len(room.action_log) > ACTION_LOG_LIMIT:
+        del room.action_log[: len(room.action_log) - ACTION_LOG_LIMIT]
+
+
+async def _broadcast_game_event(room_id: str, event: dict) -> None:
+    room = manager.rooms.get(room_id)
+    if room:
+        description = event.get("data", {}).get("description")
+        if isinstance(description, str):
+            _append_action_log(room, description)
+    await manager.broadcast(room_id, {"type": "game_event", **event})
+
+
+def _legal_card_indices(room: Room, player: Player) -> list[int]:
+    legal: list[int] = []
+    for idx, card_value in enumerate(player.hand):
+        if GameEngine.validate_play(room, player, card_value) is None:
+            legal.append(idx)
+    return legal
+
+
+def _next_ai_name(room: Room, provider: str) -> str:
+    existing = {
+        p.name.strip().lower()
+        for p in room.players
+        if p.is_ai and p.ai_provider == provider
+    }
+    base = f"{provider.capitalize()} AI"
+    if base.lower() not in existing:
+        return base
+    i = 2
+    while True:
+        candidate = f"{base} {i}"
+        if candidate.lower() not in existing:
+            return candidate
+        i += 1
+
+
+async def _run_ai_play_card(
+    room_id: str, room: Room, acting: Player, sink: _NoopWebSocket
+) -> None:
+    legal_indices = _legal_card_indices(room, acting)
+    if not legal_indices:
+        _append_action_log(room, f"{acting.name} は合法手がなく行動できませんでした。")
+        return
+
+    chosen_index, fallback = await asyncio.to_thread(
+        ai_agent.choose_card_index,
+        room,
+        acting,
+        legal_indices,
+        room.action_log[:],
+    )
+    if chosen_index not in legal_indices:
+        chosen_index = random.choice(legal_indices)
+        fallback = True
+    if fallback:
+        _append_action_log(
+            room, f"{acting.name} のAI判断に失敗したためランダムに行動しました。"
+        )
+
+    await handle_play_card(
+        sink,
+        {
+            "room_id": room_id,
+            "player_id": acting.player_id,
+            "card_index": chosen_index,
+        },
+    )
+
+
+async def _run_ai_pending_action(
+    room_id: str, room: Room, acting: Player, sink: _NoopWebSocket
+) -> None:
+    pa = room.pending_action
+    if not pa:
+        return
+
+    if pa.phase == "await_target":
+        candidates = pa.candidate_target_ids[:]
+        if not candidates:
+            return
+        target_id, fallback = await asyncio.to_thread(
+            ai_agent.choose_target_id,
+            room,
+            acting,
+            pa.card_played,
+            candidates,
+            room.action_log[:],
+        )
+        if target_id not in candidates:
+            target_id = random.choice(candidates)
+            fallback = True
+        if fallback:
+            _append_action_log(
+                room, f"{acting.name} のAI判断に失敗したためランダムに行動しました。"
+            )
+        await handle_select_target(
+            sink,
+            {
+                "room_id": room_id,
+                "player_id": acting.player_id,
+                "target_id": target_id,
+            },
+        )
+        return
+
+    if pa.phase == "await_guard_guess":
+        guessed_value, fallback = await asyncio.to_thread(
+            ai_agent.choose_guard_guess, room, acting, room.action_log[:]
+        )
+        if guessed_value == GUARD:
+            guessed_value = random.choice([v for v in range(10) if v != GUARD])
+            fallback = True
+        if fallback:
+            _append_action_log(
+                room, f"{acting.name} のAI判断に失敗したためランダムに行動しました。"
+            )
+        await handle_guard_guess(
+            sink,
+            {
+                "room_id": room_id,
+                "player_id": acting.player_id,
+                "guessed_value": guessed_value,
+            },
+        )
+        return
+
+    if pa.phase == "await_chancellor_return":
+        chancellor_hand = pa.chancellor_hand[:]
+        if not chancellor_hand:
+            return
+        kept_index, bottom_order_indices, fallback = await asyncio.to_thread(
+            ai_agent.choose_chancellor_return,
+            room,
+            acting,
+            chancellor_hand,
+            room.action_log[:],
+        )
+        if not (0 <= kept_index < len(chancellor_hand)):
+            kept_index = random.randrange(len(chancellor_hand))
+            fallback = True
+        expected = [i for i in range(len(chancellor_hand)) if i != kept_index]
+        if sorted(bottom_order_indices) != sorted(expected):
+            bottom_order_indices = expected
+            fallback = True
+        if fallback:
+            _append_action_log(
+                room, f"{acting.name} のAI判断に失敗したためランダムに行動しました。"
+            )
+        bottom_order = [chancellor_hand[idx] for idx in bottom_order_indices]
+        await handle_chancellor_return(
+            sink,
+            {
+                "room_id": room_id,
+                "player_id": acting.player_id,
+                "kept_card": chancellor_hand[kept_index],
+                "bottom_order": bottom_order,
+            },
+        )
+        return
+
+
+async def run_ai_until_human_turn(room_id: str) -> None:
+    room = manager.rooms.get(room_id)
+    if not room or room.phase != "playing":
+        return
+
+    sink = _NoopWebSocket()
+    for _ in range(MAX_AI_STEPS_PER_TICK):
+        room = manager.rooms.get(room_id)
+        if not room or room.phase != "playing":
+            return
+
+        acting: Optional[Player] = None
+        if room.pending_action:
+            acting = GameEngine._get_player(room, room.pending_action.acting_player_id)
+        elif room.players:
+            acting = room.players[room.current_player_idx]
+
+        if not acting or not acting.is_ai:
+            return
+
+        if room.pending_action:
+            await _run_ai_pending_action(room_id, room, acting, sink)
+        else:
+            await _run_ai_play_card(room_id, room, acting, sink)
+
+        if sink.last_error:
+            _append_action_log(
+                room,
+                f"{acting.name} のAI処理でエラー: {sink.last_error.get('code', 'UNKNOWN')}",
+            )
+            sink.last_error = None
+    _append_action_log(room, "AI処理がステップ上限に到達したため中断しました。")
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +452,78 @@ async def handle_join(ws: WebSocket, data: dict) -> None:
     await manager.broadcast_state(room_id)
 
 
+async def handle_add_ai_player(ws: WebSocket, data: dict) -> None:
+    """ホストがロビーにAIプレイヤーを追加する。"""
+    room_id = data["room_id"].upper()
+    host_id = data["player_id"]
+    provider = ai_agent.normalize_provider(data.get("provider"))
+    name = str(data.get("name", "")).strip()
+    room = manager.rooms.get(room_id)
+
+    if not room:
+        await ws.send_json(
+            {
+                "type": "error",
+                "code": "ROOM_NOT_FOUND",
+                "message": "ルームが見つかりません",
+            }
+        )
+        return
+    if host_id != room.host_id:
+        await ws.send_json(
+            {"type": "error", "code": "NOT_HOST", "message": "ホストのみ追加できます"}
+        )
+        return
+    if room.phase != "lobby":
+        await ws.send_json(
+            {
+                "type": "error",
+                "code": "GAME_IN_PROGRESS",
+                "message": "ゲーム開始後は追加できません",
+            }
+        )
+        return
+    if len(room.players) >= 6:
+        await ws.send_json(
+            {"type": "error", "code": "ROOM_FULL", "message": "ルームが満員です"}
+        )
+        return
+    if not provider:
+        await ws.send_json(
+            {
+                "type": "error",
+                "code": "INVALID_PROVIDER",
+                "message": "provider は openai/anthropic/gemini/xai のいずれかです",
+            }
+        )
+        return
+
+    ai_player_id = f"ai-{uuid.uuid4().hex[:10]}"
+    if not name:
+        name = _next_ai_name(room, provider)
+
+    ai_player = Player(
+        player_id=ai_player_id,
+        name=name,
+        is_connected=True,
+        is_ai=True,
+        ai_provider=provider,
+    )
+    room.players.append(ai_player)
+
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "player_joined",
+            "player_id": ai_player_id,
+            "name": name,
+            "is_ai": True,
+            "ai_provider": provider,
+        },
+    )
+    await manager.broadcast_state(room_id)
+
+
 async def handle_start_game(ws: WebSocket, data: dict) -> None:
     """ゲーム開始要求を検証し、ラウンド初期化を実行する。"""
     room_id = data["room_id"]
@@ -260,6 +557,9 @@ async def handle_start_game(ws: WebSocket, data: dict) -> None:
     n = len(room.players)
     room.tokens_to_win = TOKENS_TO_WIN.get(n, 3)
     GameEngine.setup_round(room)
+    starter = room.players[room.current_player_idx] if room.players else None
+    if starter:
+        _append_action_log(room, f"ラウンド開始: 先手は {starter.name}")
     await manager.broadcast_state(room_id)
 
 
@@ -322,7 +622,7 @@ async def handle_play_card(ws: WebSocket, data: dict) -> None:
     if card_value in (SPY, HANDMAID, COUNTESS, PRINCESS):
         events = GameEngine.resolve_card(room, current, card_value)
         for ev in events:
-            await manager.broadcast(room_id, {"type": "game_event", **ev})
+            await _broadcast_game_event(room_id, ev)
         if GameEngine.check_round_end(room):
             await _end_round(room_id)
             return
@@ -342,10 +642,9 @@ async def handle_play_card(ws: WebSocket, data: dict) -> None:
             current.hand = chancellor_hand[:1]
             for c in chancellor_hand[1:]:
                 room.deck.insert(0, c)
-            await manager.broadcast(
+            await _broadcast_game_event(
                 room_id,
                 {
-                    "type": "game_event",
                     "event_type": "card_played",
                     "data": {
                         "player_id": current.player_id,
@@ -390,10 +689,9 @@ async def handle_play_card(ws: WebSocket, data: dict) -> None:
 
     if not candidates:
         # Fizzle
-        await manager.broadcast(
+        await _broadcast_game_event(
             room_id,
             {
-                "type": "game_event",
                 "event_type": "fizzle",
                 "data": {
                     "player_id": current.player_id,
@@ -493,7 +791,7 @@ async def handle_select_target(ws: WebSocket, data: dict) -> None:
     events = GameEngine.resolve_card(room, acting, card_value, target)
     room.pending_action = None
     for ev in events:
-        await manager.broadcast(room_id, {"type": "game_event", **ev})
+        await _broadcast_game_event(room_id, ev)
 
     if GameEngine.check_round_end(room):
         await _end_round(room_id)
@@ -542,7 +840,7 @@ async def handle_guard_guess(ws: WebSocket, data: dict) -> None:
 
     events = GameEngine.resolve_guard(room, acting, target, guessed_value)
     for ev in events:
-        await manager.broadcast(room_id, {"type": "game_event", **ev})
+        await _broadcast_game_event(room_id, ev)
 
     if GameEngine.check_round_end(room):
         await _end_round(room_id)
@@ -595,10 +893,9 @@ async def handle_chancellor_return(ws: WebSocket, data: dict) -> None:
         room.deck.insert(0, c)
 
     room.pending_action = None
-    await manager.broadcast(
+    await _broadcast_game_event(
         room_id,
         {
-            "type": "game_event",
             "event_type": "chancellor_used",
             "data": {
                 "player_id": acting.player_id,
@@ -644,6 +941,9 @@ async def handle_next_round(ws: WebSocket, data: dict) -> None:
             room.current_player_idx = room.players.index(w)
 
     GameEngine.setup_round(room)
+    starter = room.players[room.current_player_idx] if room.players else None
+    if starter:
+        _append_action_log(room, f"次ラウンド開始: 先手は {starter.name}")
     await manager.broadcast_state(room_id)
 
 
@@ -657,6 +957,14 @@ async def _end_round(room_id: str) -> None:
     winner_ids = GameEngine.evaluate_round_winner(room)
     room.round_winner_ids = winner_ids
     award_info = GameEngine.award_tokens(room, winner_ids)
+    winner_names = [p.name for p in room.players if p.player_id in set(winner_ids)] or [
+        "（勝者なし）"
+    ]
+    _append_action_log(room, f"ラウンド終了: {', '.join(winner_names)} が勝利")
+    if award_info["spy_bonus_id"]:
+        spy_player = GameEngine._get_player(room, award_info["spy_bonus_id"])
+        spy_name = spy_player.name if spy_player else award_info["spy_bonus_id"]
+        _append_action_log(room, f"Spyボーナス: {spy_name} +1トークン")
 
     revealed = [
         {"player_id": p.player_id, "name": p.name, "hand": p.hand} for p in room.players
@@ -681,6 +989,10 @@ async def _end_round(room_id: str) -> None:
     if game_winners:
         room.winner_ids = game_winners
         room.phase = "game_over"
+        game_winner_names = [
+            p.name for p in room.players if p.player_id in set(game_winners)
+        ] or ["（勝者なし）"]
+        _append_action_log(room, f"ゲーム終了: {', '.join(game_winner_names)} が優勝")
         await manager.broadcast(
             room_id, {"type": "game_over", "winner_ids": game_winners}
         )
@@ -691,6 +1003,15 @@ async def _end_round(room_id: str) -> None:
 # ---------------------------------------------------------------------------
 # WebSocket endpoint
 # ---------------------------------------------------------------------------
+
+
+@app.get("/api/ai-providers")
+async def list_ai_providers():
+    """APIキーが設定済みのAIプロバイダ一覧を返す。"""
+    available = [
+        p for p in ai_agent.SUPPORTED_AI_PROVIDERS if ai_agent._provider_has_key(p)
+    ]
+    return {"providers": available}
 
 
 @app.get("/api/rooms")
@@ -776,16 +1097,24 @@ async def websocket_endpoint(ws: WebSocket):
             async with lock:
                 if msg_type == "start_game":
                     await handle_start_game(ws, data)
+                    await run_ai_until_human_turn(room_id)
+                elif msg_type == "add_ai_player":
+                    await handle_add_ai_player(ws, data)
                 elif msg_type == "play_card":
                     await handle_play_card(ws, data)
+                    await run_ai_until_human_turn(room_id)
                 elif msg_type == "select_target":
                     await handle_select_target(ws, data)
+                    await run_ai_until_human_turn(room_id)
                 elif msg_type == "guard_guess":
                     await handle_guard_guess(ws, data)
+                    await run_ai_until_human_turn(room_id)
                 elif msg_type == "chancellor_return":
                     await handle_chancellor_return(ws, data)
+                    await run_ai_until_human_turn(room_id)
                 elif msg_type == "next_round":
                     await handle_next_round(ws, data)
+                    await run_ai_until_human_turn(room_id)
 
     except WebSocketDisconnect:
         if room_id and player_id:

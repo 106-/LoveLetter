@@ -20,6 +20,8 @@ class Player:
     protected: bool = False
     played_spy: bool = False
     is_connected: bool = True
+    is_ai: bool = False
+    ai_provider: Optional[str] = None
 
 
 @dataclass
@@ -45,6 +47,7 @@ class Room:
     round_winner_ids: list[str] = field(default_factory=list)
     tokens_to_win: int = 6
     pending_action: Optional[PendingAction] = None
+    action_log: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,13 @@ const CARD_DESC = {
   9: 'プレイ/捨てると即脱落',
 };
 
+const AI_PROVIDER_LABELS = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  gemini: 'Gemini',
+  xai: 'xAI',
+};
+
 function uuidv4() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -104,6 +111,8 @@ export default function App() {
   const [overlay, setOverlay] = useState(null);
   const [roundEndMsg, setRoundEndMsg] = useState(null);
   const [gameOverNames, setGameOverNames] = useState([]);
+  const [availableAiProviders, setAvailableAiProviders] = useState([]);
+  const [aiProvider, setAiProvider] = useState('');
 
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -154,6 +163,19 @@ export default function App() {
       setAvailableRooms([]);
     } finally {
       setRoomsLoading(false);
+    }
+  }, []);
+
+  const fetchAiProviders = useCallback(async () => {
+    try {
+      const response = await fetch('/api/ai-providers', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const providers = Array.isArray(payload.providers) ? payload.providers : [];
+      setAvailableAiProviders(providers);
+      setAiProvider((prev) => (providers.includes(prev) ? prev : providers[0] ?? ''));
+    } catch {
+      setAvailableAiProviders([]);
     }
   }, []);
 
@@ -253,6 +275,16 @@ export default function App() {
           setScreen('lobby');
           break;
         case 'player_joined':
+          if (msg.name) {
+            const providerLabel = msg.ai_provider
+              ? AI_PROVIDER_LABELS[msg.ai_provider] || msg.ai_provider
+              : '';
+            addLog(
+              msg.is_ai
+                ? `${msg.name} (AI: ${providerLabel}) が参加しました`
+                : `${msg.name} が参加しました`
+            );
+          }
           break;
         case 'state_update': {
           setGameState(msg);
@@ -353,6 +385,11 @@ export default function App() {
     const timer = setInterval(fetchRooms, 3000);
     return () => clearInterval(timer);
   }, [fetchRooms, screen]);
+
+  useEffect(() => {
+    if (screen !== 'lobby') return;
+    fetchAiProviders();
+  }, [fetchAiProviders, screen]);
 
   const me = useMemo(() => {
     if (!gameState) return null;
@@ -477,6 +514,16 @@ export default function App() {
   const onStartGame = () => {
     if (!myRoomId) return;
     send({ type: 'start_game', room_id: myRoomId, player_id: myPlayerId });
+  };
+
+  const onAddAiPlayer = () => {
+    if (!myRoomId) return;
+    send({
+      type: 'add_ai_player',
+      room_id: myRoomId,
+      player_id: myPlayerId,
+      provider: aiProvider,
+    });
   };
 
   const onNextRound = () => {
@@ -650,6 +697,7 @@ export default function App() {
   let hasPendingTarget = false;
   let waitingAction = false;
   let countessForced = false;
+  let activePlayerId = null;
   let currentPlayer = null;
 
   if (isPlaying) {
@@ -664,6 +712,7 @@ export default function App() {
     countessForced = hasCountess && hasKingOrPrince;
 
     currentPlayer = gameState.players.find((p) => p.player_id === gameState.current_player_id);
+    activePlayerId = pa ? pa.acting_player_id : gameState.current_player_id;
   }
 
   return (
@@ -737,10 +786,40 @@ export default function App() {
           {(gameState?.players || []).map((p, i) => (
             <li key={p.player_id}>
               {i === 0 && <span className="crown">♛ </span>}
-              {p.name}
+              <span>{p.name}</span>
+              {p.is_ai && (
+                <span className="ai-tag">
+                  AI: {AI_PROVIDER_LABELS[p.ai_provider] || p.ai_provider || 'custom'}
+                </span>
+              )}
             </li>
           ))}
         </ul>
+
+        {isHost && availableAiProviders.length > 0 && (
+          <div className="ai-add-panel">
+            <div className="ai-add-title">AIプレイヤーを追加</div>
+            <div className="ai-add-row">
+              <select
+                value={aiProvider}
+                onChange={(e) => setAiProvider(e.target.value)}
+              >
+                {availableAiProviders.map((value) => (
+                  <option key={value} value={value}>
+                    {AI_PROVIDER_LABELS[value] || value}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn-outline"
+                disabled={(gameState?.players?.length || 0) >= 6}
+                onClick={onAddAiPlayer}
+              >
+                AI追加
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           className="btn"
@@ -813,8 +892,14 @@ export default function App() {
                   onClick={isCandidate ? () => selectTarget(p.player_id) : undefined}
                 >
                   <div className="opp-name">
+                    {p.player_id === activePlayerId && !p.eliminated && (
+                      <span className="turn-spinner" />
+                    )}
                     {p.name}
                     {p.player_id === gameState.players[0]?.player_id ? ' ♛' : ''}
+                    {p.is_ai
+                      ? ` [AI:${AI_PROVIDER_LABELS[p.ai_provider] || p.ai_provider || 'custom'}]`
+                      : ''}
                   </div>
                   <div className="opp-tokens">🏆 {p.tokens}</div>
                   <div className="token-dots">{tokenDots(p.tokens, tokensToWin)}</div>
@@ -842,11 +927,19 @@ export default function App() {
         <div className="my-area">
           <div className="my-info">
             <div className="my-name" id="my-name">
-              {isPlaying
-                ? `${me.name}${me.player_id === gameState.players[0]?.player_id ? ' ♛' : ''}${
-                    isMyTurn ? ' ← あなたのターン' : ''
-                  }`
-                : '-'}
+              {isPlaying ? (
+                <>
+                  {me.player_id === activePlayerId && !me.eliminated && (
+                    <span className="turn-spinner" />
+                  )}
+                  {me.name}
+                  {me.is_ai
+                    ? ` [AI:${AI_PROVIDER_LABELS[me.ai_provider] || me.ai_provider || 'custom'}]`
+                    : ''}
+                  {me.player_id === gameState.players[0]?.player_id ? ' ♛' : ''}
+                  {isMyTurn ? ' ← あなたのターン' : ''}
+                </>
+              ) : '-'}
             </div>
             <div className="my-tokens" id="my-tokens">
               🏆 {isPlaying ? me.tokens : 0}
